@@ -1,0 +1,20 @@
+{
+  "name": "manchenkov/yii2-recaptcha3",
+  "description": "Yii 2 extension to work with Google reCAPTCHA v3",
+  "type": "yii2-extension",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Artem Manchenkov",
+      "email": "artyom@manchenkoff.me"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Manchenkov\\Yii\\Recaptcha\\": "src/"
+    }
+  },
+  "require": {
+    "yiisoft/yii2-httpclient": "^2.0"
+  }
+}
