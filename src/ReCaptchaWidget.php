@@ -5,7 +5,7 @@
  * manchenkoff.me © 2019
  */
 
-namespace Manchenkov\Yii\Recaptcha;
+namespace manchenkov\yii\recaptcha;
 
 use Yii;
 use yii\base\InvalidConfigException;
