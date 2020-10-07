@@ -5,6 +5,8 @@
  * manchenkoff.me © 2019
  */
 
+declare(strict_types=1);
+
 namespace manchenkov\yii\recaptcha;
 
 use Yii;
@@ -23,19 +25,19 @@ class ReCaptchaWidget extends InputWidget
      * reCaptcha action name
      * @var string
      */
-    public $action;
+    public string $action;
 
     /**
      * Enables visibility of Google Privacy badge
      * @var bool
      */
-    public $showBadge = true;
+    public bool $showBadge = true;
 
     /**
      * Google API key
      * @var string
      */
-    private $apiKey;
+    private string $apiKey;
 
     /**
      * Checks necessary configuration for initialization
@@ -61,8 +63,9 @@ class ReCaptchaWidget extends InputWidget
     /**
      * Renders hidden input and registers JS scripts
      * @return string
+     * @throws InvalidConfigException
      */
-    public function run()
+    public function run(): string
     {
         // include external Google API script
         $this->view->registerJsFile(
