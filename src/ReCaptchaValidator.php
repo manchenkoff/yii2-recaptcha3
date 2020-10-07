@@ -5,12 +5,15 @@
  * manchenkoff.me © 2019
  */
 
+declare(strict_types=1);
+
 namespace manchenkov\yii\recaptcha;
 
 use Yii;
 use yii\base\InvalidConfigException;
 use yii\httpclient\Client;
 use yii\httpclient\CurlTransport;
+use yii\httpclient\Exception;
 use yii\validators\Validator;
 
 class ReCaptchaValidator extends Validator
@@ -19,7 +22,7 @@ class ReCaptchaValidator extends Validator
      * URL to verify response
      * @var string
      */
-    private $apiUrl = "https://www.google.com/recaptcha/api/";
+    private string $apiUrl = "https://www.google.com/recaptcha/api/";
 
     /**
      * Stop validation if an error occurred
@@ -43,19 +46,19 @@ class ReCaptchaValidator extends Validator
      * Acceptance score from Google API
      * @var float
      */
-    public $score = 0.5;
+    public float $score = 0.5;
 
     /**
      * Action name to validate API response
      * @var string
      */
-    public $action = 'homepage';
+    public string $action = 'homepage';
 
     /**
      * Google reCAPTCHA v3 secret key
      * @var string
      */
-    private $secretKey;
+    private string $secretKey;
 
     /**
      * Checks necessary configuration for initialization
@@ -74,10 +77,8 @@ class ReCaptchaValidator extends Validator
     }
 
     /**
-     * @param \yii\base\Model $model
-     * @param string $attribute
-     *
-     * @throws \yii\httpclient\Exception
+     * {@inheritdoc}
+     * @throws Exception
      */
     public function validateAttribute($model, $attribute)
     {
@@ -85,17 +86,22 @@ class ReCaptchaValidator extends Validator
 
         $currentHost = Yii::$app->request->hostName;
 
-        $http = new Client([
-            'baseUrl' => $this->apiUrl,
-            'transport' => CurlTransport::class,
-        ]);
+        $http = new Client(
+            [
+                'baseUrl' => $this->apiUrl,
+                'transport' => CurlTransport::class,
+            ]
+        );
 
         $response = $http
-            ->post('siteverify', [
-                'secret' => $this->secretKey,
-                'response' => $token,
-                'remoteip' => Yii::$app->request->remoteIP,
-            ])
+            ->post(
+                'siteverify',
+                [
+                    'secret' => $this->secretKey,
+                    'response' => $token,
+                    'remoteip' => Yii::$app->request->remoteIP,
+                ]
+            )
             ->send();
 
         if ($response->isOk) {
