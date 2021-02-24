@@ -1,9 +1,4 @@
 <?php
-/**
- * Created by Artyom Manchenkov
- * artyom@manchenkoff.me
- * manchenkoff.me © 2019
- */
 
 declare(strict_types=1);
 
@@ -22,16 +17,32 @@ use yii\widgets\InputWidget;
 class ReCaptchaWidget extends InputWidget
 {
     /**
+     * Secret key attribute name in Yii params file
+     */
+    private const SITE_API_CONFIG_KEY = 'reCAPTCHA.siteKey';
+
+    /**
+     * String format of required Google JS script, 'siteKey' must be set here
+     */
+    private const VENDOR_JS_FILEPATH_FORMAT = 'https://www.google.com/recaptcha/api.js?render=%s';
+
+    /**
      * reCaptcha action name
      * @var string
      */
-    public string $action;
+    public string $action = 'homepage';
 
     /**
      * Enables visibility of Google Privacy badge
      * @var bool
      */
     public bool $showBadge = true;
+
+    /**
+     * Enables preloading reCaptcha token on form init
+     * @var bool
+     */
+    public bool $preloading = false;
 
     /**
      * Google API key
@@ -45,12 +56,11 @@ class ReCaptchaWidget extends InputWidget
      */
     public function init()
     {
-        // checks that application params contain API_KEY
-        if (!isset(Yii::$app->params['reCAPTCHA.siteKey'])) {
+        if (!array_key_exists(self::SITE_API_CONFIG_KEY, Yii::$app->params)) {
             throw new InvalidConfigException('Google reCAPTCHA site key must be specified!');
-        } else {
-            $this->apiKey = Yii::$app->params['reCAPTCHA.siteKey'];
         }
+
+        $this->apiKey = Yii::$app->params[self::SITE_API_CONFIG_KEY];
 
         // checks that model contain selected attribute
         if (!$this->model->hasProperty($this->attribute)) {
@@ -67,40 +77,103 @@ class ReCaptchaWidget extends InputWidget
      */
     public function run(): string
     {
+        $this->enableScripts();
+        $this->setUpActiveField();
+        $this->enableReCaptchaCallbacks();
+
+        return Html::activeHiddenInput($this->model, $this->attribute, ['value' => '']);
+    }
+
+    /**
+     * @throws InvalidConfigException
+     */
+    private function enableScripts(): void
+    {
+        $remoteJsFile = sprintf(self::VENDOR_JS_FILEPATH_FORMAT, $this->apiKey);
+        $uniqueJsKey = sprintf('recaptcha-js-%s', $this->apiKey);
+
         // include external Google API script
-        $this->view->registerJsFile(
-            "https://www.google.com/recaptcha/api.js?render={$this->apiKey}",
-            ['position' => View::POS_HEAD],
-            'recaptcha-js-file'
-        );
+        $this->view->registerJsFile($remoteJsFile, ['position' => View::POS_HEAD], $uniqueJsKey);
 
         // hide Google badge (https://developers.google.com/recaptcha/docs/faq)
         if (!$this->showBadge) {
             $this->view->registerCss('.grecaptcha-badge {visibility: hidden;}');
         }
+    }
 
-        // modify ActiveField object
-        if ($this->field) {
-            if (!$this->showBadge) {
-                // setup Google's hint if badge was hidden
-                $this->field->hint(
-                    "This site is protected by reCAPTCHA and "
-                    . "the Google <a href='https://policies.google.com/privacy'>Privacy Policy</a> "
-                    . "and <a href='https://policies.google.com/terms'>Terms of Service</a> apply."
-                );
-            }
-
-            // reset the label
-            $this->field->label(false);
+    private function setUpActiveField(): void
+    {
+        if (!$this->field) {
+            return;
         }
 
-        // generate input ID to change a value
-        $id = Html::getInputId($this->model, $this->attribute);
+        if (!$this->showBadge) {
+            // setup Google's hint if badge was hidden
+            $this->field->hint(
+                "This site is protected by reCAPTCHA and "
+                . "the Google <a href='https://policies.google.com/privacy'>Privacy Policy</a> "
+                . "and <a href='https://policies.google.com/terms'>Terms of Service</a> apply."
+            );
+        }
 
-        // execute captcha and remember result token into a hidden input
-        $js = <<<JS
+        $this->field->label(false);
+    }
+
+    private function enableReCaptchaCallbacks(): void
+    {
+        $reCaptchaFieldId = Html::getInputId($this->model, $this->attribute);
+
+        $jsCallbackScript = $this->preloading
+            ? $this->getScriptWithPreloading($reCaptchaFieldId)
+            : $this->getScriptOnSubmit($reCaptchaFieldId);
+
+        $this->view->registerJs($jsCallbackScript, View::POS_END);
+    }
+
+    private function getScriptWithPreloading(string $fieldId): string
+    {
+        return <<<JS
+let reCaptchaTaskID = undefined;
+
+function refreshCaptchaToken(formField) {
+    grecaptcha
+        .execute('{$this->apiKey}', {action: '{$this->action}'})
+        .then(
+            function (token) {
+                formField.value = token;
+                console.debug('reCaptcha token was set');
+            }
+        );
+    
+    if (!reCaptchaTaskID) {
+        reCaptchaTaskID = setInterval(
+            function () {
+                refreshCaptchaToken(formField);
+            }, 
+            1000 * 60 * 2
+        );
+    }
+}
+
 grecaptcha.ready(function() {
-    let form = document.querySelector('#{$id}').closest('form');
+    let form = document.querySelector('#{$fieldId}').closest('form');
+    let reCaptchaField = document.querySelector('#{$fieldId}');
+    
+    refreshCaptchaToken(reCaptchaField);
+    
+    form.onsubmit = (e) => {
+        refreshCaptchaToken(reCaptchaField);
+    };
+});
+JS;
+    }
+
+    private function getScriptOnSubmit(string $fieldId): string
+    {
+        return <<<JS
+grecaptcha.ready(function() {
+    let form = document.querySelector('#{$fieldId}').closest('form');
+    let reCaptchaField = document.querySelector('#{$fieldId}');
     
     form.onsubmit = (e) => {
         e.preventDefault();
@@ -108,17 +181,11 @@ grecaptcha.ready(function() {
         grecaptcha
             .execute('{$this->apiKey}', {action: '{$this->action}'})
             .then(function(token) {
-                document.querySelector('#{$id}').value = token;
+                reCaptchaField.value = token;
                 form.submit();
             });
     };
 });
 JS;
-
-        // append script to the view
-        $this->view->registerJs($js, View::POS_END);
-
-        // return a hidden input HTML content
-        return Html::activeHiddenInput($this->model, $this->attribute, ['value' => '']);
     }
 }

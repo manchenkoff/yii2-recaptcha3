@@ -2,9 +2,17 @@
 
 This package is a simple extension for Yii 2 which helps to work with [Google reCAPTCHA v3](https://developers.google.com/recaptcha/)
 
+- [Installation](#installation)
+- [Usage](#usage)
+    - [Basic](#basic-setup)
+    - [AJAX validation](#ajax-validation)
+    - [Twig integration](#usage-with-twig)
+- [Localization](#localization)
+- [Hiding Google reCaptcha badge](#hiding-google-privacy-badge)
+
 ## Installation
 
-You have to run following command to add a dependency to your project
+You have to run the following command to add a dependency to your project
 
 ```bash
 composer require manchenkov/yii2-recaptcha3
@@ -13,12 +21,13 @@ composer require manchenkov/yii2-recaptcha3
 or you can add this line to `require` section of `composer.json`
 
 ```
-"manchenkov/yii2-recaptcha3": "*"
+"manchenkov/yii2-recaptcha3": "^1.0.3"
 ```
 
 ## Usage
 
-In first you have to add following settings into your `params-local.php` file or your different preferred Git ignored configuration files
+### Basic setup
+In first, you have to add the following settings into your application **params** section (usually `params.php` file).
 
 ```
 return [
@@ -28,7 +37,7 @@ return [
 ];
 ``` 
 
-Then you should add the following rules to validate the model
+Then you should add the rules as below to validate the model
 
 ```
 public $captcha;
@@ -57,6 +66,39 @@ $form->field($model, 'captcha')->widget(ReCaptchaWidget::class, ['action' => 'lo
 // action name must be the same as validation rules
 ```
 
+### AJAX Validation
+Default behaviour may cause some problems with AJAX validation because Google recommends to request captcha token just before submitting form, see documentation
+
+```
+Note: reCAPTCHA tokens expire after two minutes. If you're protecting an action with reCAPTCHA, make sure to call execute when the user takes the action rather than on page load.
+```
+
+In this case Yii controller will receive the empty value and give you validation error.
+
+To solve this problem **ReCaptchaWidget** supports additional attribute - **preloading**'.
+
+You should use the following example in your views files
+
+```php
+<?php $form = ActiveForm::begin(
+    [
+        'id' => 'example-form',
+        'enableAjaxValidation' => true,
+        'validateOnBlur' => false,
+        'validateOnChange' => false,
+    ]
+); ?>
+
+...
+
+<?= $form->field($model, 'captcha')->widget(ReCaptchaWidget::class, ['action' => 'login', 'preloading' => true]); ?>
+```
+
+**IMPORTANT**
+
+You can't use **enableAjaxValidation** without disabling **validateOnBlur** and **validateOnChange** because default **yiiActiveForm.js** plugin submits a form for validation purpose automatically and without any events, so _reCaptcha token wouldn't be refreshed_.
+
+### Usage with Twig
 If You use Twig as a template engine, you can create helper function like this:
 
 ```
@@ -84,7 +126,7 @@ and then use it in the **.twig** templates without ActiveForm
 
 ## Localization
 
-If any error occurred during the validation, the default error message will be "Google reCAPTCHA verification failed". 
+If any error occurs during the validation or sending request via HTTP client, the default error message will be "Google reCAPTCHA verification failed". 
 Input widget uses default [i18n localization](https://www.yiiframework.com/doc/guide/2.0/en/tutorial-i18n) to print it to the page, so you can add a translation for the next message:
 
 ```
