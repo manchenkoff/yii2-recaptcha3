@@ -1,9 +1,4 @@
 <?php
-/**
- * Created by Artyom Manchenkov
- * artyom@manchenkoff.me
- * manchenkoff.me © 2019
- */
 
 declare(strict_types=1);
 
@@ -14,15 +9,24 @@ use yii\base\InvalidConfigException;
 use yii\httpclient\Client;
 use yii\httpclient\CurlTransport;
 use yii\httpclient\Exception;
+use yii\httpclient\Response;
 use yii\validators\Validator;
 
+/**
+ * ReCaptchaValidator class to check value for Google reCAPTCHA v3
+ * @package Manchenkov\Yii\Recaptcha
+ */
 class ReCaptchaValidator extends Validator
 {
     /**
      * URL to verify response
-     * @var string
      */
-    private string $apiUrl = "https://www.google.com/recaptcha/api/";
+    private const VALIDATION_URL = "https://www.google.com/recaptcha/api/";
+
+    /**
+     * Secret key attribute name in Yii params file
+     */
+    private const SECRET_CONFIG_KEY = 'reCAPTCHA.secretKey';
 
     /**
      * Stop validation if an error occurred
@@ -37,7 +41,7 @@ class ReCaptchaValidator extends Validator
     public $skipOnEmpty = false;
 
     /**
-     * Error if validation fails
+     * Error message if validation fails
      * @var string
      */
     public $message = "Google reCAPTCHA verification failed";
@@ -66,34 +70,61 @@ class ReCaptchaValidator extends Validator
      */
     public function init()
     {
-        // checks that a site key exist in a config
-        if (!isset(Yii::$app->params['reCAPTCHA.secretKey'])) {
+        if (!array_key_exists(self::SECRET_CONFIG_KEY, Yii::$app->params)) {
             throw new InvalidConfigException('Google reCAPTCHA secret key must be specified!');
-        } else {
-            $this->secretKey = Yii::$app->params['reCAPTCHA.secretKey'];
         }
+
+        $this->secretKey = Yii::$app->params[self::SECRET_CONFIG_KEY];
 
         parent::init();
     }
 
     /**
      * {@inheritdoc}
-     * @throws Exception
      */
     public function validateAttribute($model, $attribute)
     {
-        $token = $model->{$attribute};
+        $reCaptchaTokenValue = $model->{$attribute};
 
-        $currentHost = Yii::$app->request->hostName;
+        try {
+            $response = $this->sendValidationRequest($reCaptchaTokenValue);
+        } catch (Exception $exception) {
+            $this->addError(
+                $model,
+                $attribute,
+                Yii::t('app', $this->message)
+            );
 
-        $http = new Client(
+            return;
+        }
+
+        if ($this->isResponseValid($response)) {
+            return;
+        }
+
+        $this->addError(
+            $model,
+            $attribute,
+            Yii::t('app', $this->message)
+        );
+    }
+
+    /**
+     * @param string $token
+     *
+     * @return Response
+     * @throws Exception
+     */
+    private function sendValidationRequest(string $token): Response
+    {
+        $httpClient = new Client(
             [
-                'baseUrl' => $this->apiUrl,
+                'baseUrl' => self::VALIDATION_URL,
                 'transport' => CurlTransport::class,
             ]
         );
 
-        $response = $http
+        return $httpClient
             ->post(
                 'siteverify',
                 [
@@ -103,21 +134,23 @@ class ReCaptchaValidator extends Validator
                 ]
             )
             ->send();
+    }
 
-        if ($response->isOk) {
-            $data = $response->data;
+    private function isResponseValid(Response $response): bool
+    {
+        if (!$response->isOk) {
+            return false;
+        }
 
-            if ($data['success'] && $data['hostname'] == $currentHost) {
-                if ($data['action'] == $this->action && $data['score'] >= $this->score) {
-                    return;
-                }
+        $currentHost = Yii::$app->request->hostName;
+        $data = $response->data;
+
+        if ($data['success'] && $data['hostname'] == $currentHost) {
+            if ($data['action'] === $this->action && $data['score'] >= $this->score) {
+                return true;
             }
         }
 
-        $this->addError(
-            $model,
-            $attribute,
-            Yii::t('app', $this->message)
-        );
+        return false;
     }
 }
